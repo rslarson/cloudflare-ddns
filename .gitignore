@@ -1,0 +1,6 @@
+*.code-workspace
+vendor/
+bazel-bin
+bazel-cloudflare-ddns
+bazel-out
+bazel-testlogs
