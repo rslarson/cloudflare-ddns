@@ -19,10 +19,8 @@ package cloudflare
 
 import (
 	"fmt"
-	"io/ioutil"
-	"net"
-	"net/http"
-	"time"
+
+	"github.com/rslarson/cloudflare-ddns/internal/ip"
 
 	cf "github.com/cloudflare/cloudflare-go"
 )
@@ -33,19 +31,6 @@ type Cloudflare struct {
 	ZoneID   string
 	RecordID string
 	PublicIP string
-}
-
-// HTTPClient interface
-type HTTPClient interface {
-	Do(req *http.Request) (*http.Response, error)
-}
-
-var client HTTPClient
-
-func init() {
-	client = &http.Client{
-		Timeout: 5 * time.Second,
-	}
 }
 
 // NewCloudflare retuns a Cloudflare struct
@@ -75,7 +60,7 @@ func NewCloudflare(token, zone, record string) (*Cloudflare, error) {
 		return nil, fmt.Errorf("No records returned for provided DNS record")
 	}
 
-	ip, err := getPublicIP()
+	ip, err := ip.GetPublicIP()
 	if err != nil {
 		return nil, err
 	}
@@ -113,33 +98,4 @@ func (c *Cloudflare) UpdateDNSRecord(proxy bool) error {
 		return err
 	}
 	return nil
-}
-
-func getPublicIP() (string, error) {
-	req, err := http.NewRequest("GET", "https://api.ipify.org?format=text", nil)
-	if err != nil {
-		return "", err
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	} else if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP Status Code not OK: %v", resp.Status)
-	}
-	defer resp.Body.Close()
-
-	b, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	ip := string(b)
-
-	if i := net.ParseIP(ip); i == nil {
-		return "", fmt.Errorf("Invalid IP recieved: %v", i)
-	} else if j := i.To4(); j == nil {
-		return "", fmt.Errorf("Expected IPv4 Address, recieved IPv6: %v", i)
-	}
-
-	return ip, nil
 }
