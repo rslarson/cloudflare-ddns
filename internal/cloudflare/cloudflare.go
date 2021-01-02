@@ -19,6 +19,10 @@ package cloudflare
 
 import (
 	"fmt"
+	"io/ioutil"
+	"net"
+	"net/http"
+	"time"
 
 	cf "github.com/cloudflare/cloudflare-go"
 )
@@ -28,6 +32,20 @@ type Cloudflare struct {
 	API      *cf.API
 	ZoneID   string
 	RecordID string
+	PublicIP string
+}
+
+// HTTPClient interface
+type HTTPClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+var client HTTPClient
+
+func init() {
+	client = &http.Client{
+		Timeout: 5 * time.Second,
+	}
 }
 
 // NewCloudflare retuns a Cloudflare struct
@@ -56,10 +74,17 @@ func NewCloudflare(token, zone, record string) (*Cloudflare, error) {
 	} else if resp == nil {
 		return nil, fmt.Errorf("No records returned for provided DNS record")
 	}
+
+	ip, err := getPublicIP()
+	if err != nil {
+		return nil, err
+	}
+
 	return &Cloudflare{
 		API:      api,
 		ZoneID:   zid,
 		RecordID: resp[0].ID,
+		PublicIP: ip,
 	}, nil
 }
 
@@ -73,11 +98,11 @@ func (c *Cloudflare) GetRecordDetails() (cf.DNSRecord, error) {
 }
 
 // UpdateDNSRecord updates the provided DNS record with the provided IP address
-func (c *Cloudflare) UpdateDNSRecord(ip string, proxy bool) error {
+func (c *Cloudflare) UpdateDNSRecord(proxy bool) error {
 	newRecord := cf.DNSRecord{
 		ID:        c.RecordID,
 		Type:      "A",
-		Content:   ip,
+		Content:   c.PublicIP,
 		Proxiable: true,
 		Proxied:   proxy,
 		ZoneID:    c.ZoneID,
@@ -88,4 +113,33 @@ func (c *Cloudflare) UpdateDNSRecord(ip string, proxy bool) error {
 		return err
 	}
 	return nil
+}
+
+func getPublicIP() (string, error) {
+	req, err := http.NewRequest("GET", "https://api.ipify.org?format=text", nil)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	} else if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP Status Code not OK: %v", resp.Status)
+	}
+	defer resp.Body.Close()
+
+	b, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	ip := string(b)
+
+	if i := net.ParseIP(ip); i == nil {
+		return "", fmt.Errorf("Invalid IP recieved: %v", i)
+	} else if j := i.To4(); j == nil {
+		return "", fmt.Errorf("Expected IPv4 Address, recieved IPv6: %v", i)
+	}
+
+	return ip, nil
 }

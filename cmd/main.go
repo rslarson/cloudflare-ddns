@@ -18,11 +18,7 @@
 package main
 
 import (
-	"fmt"
-	"io/ioutil"
 	"log"
-	"net"
-	"net/http"
 	"os"
 	"time"
 
@@ -50,17 +46,12 @@ var (
 					},
 				},
 				Action: func(c *cli.Context) error {
-					ip, err := getPublicIP()
-					if err != nil {
-						return err
-					}
-
 					cf, err := cloudflare.NewCloudflare(token, zone, record)
 					if err != nil {
 						return err
 					}
 
-					err = cf.UpdateDNSRecord(ip, c.Bool("proxy"))
+					err = cf.UpdateDNSRecord(c.Bool("proxy"))
 					if err != nil {
 						return nil
 					}
@@ -131,37 +122,4 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-}
-
-func getPublicIP() (string, error) {
-	c := http.Client{
-		Timeout: 5 * time.Second,
-	}
-
-	req, err := http.NewRequest("GET", "https://api.ipify.org?format=text", nil)
-	if err != nil {
-		return "", err
-	}
-
-	resp, err := c.Do(req)
-	if err != nil {
-		return "", err
-	} else if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP Status Code not OK: %v", resp.Status)
-	}
-	defer resp.Body.Close()
-
-	b, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	ip := string(b)
-
-	if i := net.ParseIP(ip); i == nil {
-		return "", fmt.Errorf("Invalid IP recieved: %v", i)
-	} else if j := i.To4(); j == nil {
-		return "", fmt.Errorf("Expected IPv4 Address, recieved IPv6: %v", i)
-	}
-
-	return ip, nil
 }
